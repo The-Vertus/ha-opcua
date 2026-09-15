@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.55
+- Fixed `BadCertificateUriInvalid` rejections from strict OPC UA servers (Siemens/Beckhoff/CODESYS-class PLC stacks)
+  when using `Basic256Sha256_Sign`/`Basic256Sha256_SignAndEncrypt`: the client now explicitly announces
+  `application_uri = "urn:homeassistant:opcua-client"` (`const.APPLICATION_URI`) instead of relying on asyncua's
+  library default, so it stays in sync with the SubjectAlternativeName documented for client certificates.
+- Regenerated the bundled example certificate (`certs/client_basic256_cert.pem`/`client_basic256_key.pem`) to include
+  a URI SubjectAlternativeName matching `urn:homeassistant:opcua-client` (the previous sample had no SAN at all,
+  which asyncua warns about and strict servers reject outright).
+- Documented the certificate SAN requirement and an `openssl` command to generate a compliant client cert in the
+  README.
+
 ## 1.0.51
 - Added `custom_components/opcua/quality_scale.yaml` and mapped all quality-scale checklist rules with `done` / `exempt` + rationale comments.
 - Performed full quality-scale pass and synchronized matrix/checklist coverage with current implementation.

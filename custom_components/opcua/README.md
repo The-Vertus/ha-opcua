@@ -55,6 +55,19 @@ This integration uses **opcua-asyncio** (`asyncua`) and follows Home Assistant i
   - `Basic256Sha256_Sign`
   - `Basic256Sha256_SignAndEncrypt`
 - For Basic256Sha256, certificate/key paths must be set in the config flow
+- The integration announces the application URI `urn:homeassistant:opcua-client` when
+  creating a secure session. Your client certificate's SubjectAlternativeName (URI)
+  must contain this exact value, or many PLC/industrial OPC UA stacks (Siemens,
+  Beckhoff, CODESYS, ...) will reject the session with `BadCertificateUriInvalid`.
+  Certificates with no SubjectAlternativeName at all are rejected the same way. See
+  `certs/client_basic256_cert.pem`/`client_basic256_key.pem` for a ready-made example,
+  or generate your own with:
+  ```
+  openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 3650 \
+    -keyout client_key.pem -out client_cert.pem \
+    -subj "/CN=homeassistant-opcua-client" \
+    -addext "subjectAltName=URI:urn:homeassistant:opcua-client"
+  ```
 - Update cadence can still vary with server-side subscription/monitored-item limits
 
 ## Supported / unsupported device scope

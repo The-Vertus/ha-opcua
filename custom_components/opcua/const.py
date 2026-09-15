@@ -212,6 +212,14 @@ SECURITY_POLICY_BASIC256SHA256_SIGN_ENCRYPT = "Basic256Sha256_SignAndEncrypt"
 DEFAULT_SECURITY_POLICY = SECURITY_POLICY_NONE
 DEFAULT_VALIDATE_ON_SAVE = False
 
+# Application URI this integration announces to the server during session
+# creation. Many industrial OPC UA stacks (Siemens, Beckhoff, CODESYS, ...)
+# strictly enforce that the client certificate carries a URI-type
+# SubjectAlternativeName equal to this value, and reject the session with
+# BadCertificateUriInvalid otherwise. Client certificates used with a
+# non-None security policy MUST have this exact URI in their SAN.
+APPLICATION_URI = "urn:homeassistant:opcua-client"
+
 # asyncua's own Client default (4s) is too short for PLCs whose OPC UA
 # stack needs several seconds of RSA work to open a secure channel (e.g.
 # Siemens S7-1200, observed taking 10-20s+ on first handshake). Default
