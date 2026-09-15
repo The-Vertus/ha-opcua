@@ -894,8 +894,41 @@ class OpcUaOptionsFlow(OptionsFlow):
         self._discovery_cache: list[dict[str, Any]] = []
         self._server_discovery_cache: list[dict[str, Any]] = []
 
+    def _merge_concurrent_nodes(self) -> None:
+        """Guard against a concurrent options-flow session's nodes being clobbered.
+
+        This flow snapshots ``self._options`` once in __init__ and every mutating
+        step (add/remove/discover) immediately persists a full overwrite of
+        ``entry.options``. If a separate options-flow session (e.g. opened in an
+        earlier or overlapping visit) persisted additional nodes in the
+        meantime, ``self._entry.options`` (the live, shared ConfigEntry object)
+        already reflects them even though this session's in-memory snapshot
+        doesn't. Union those in by node_id before writing, so this session's
+        save can't silently discard nodes another session added.
+
+        This intentionally favors "never silently lose nodes" over instant,
+        always-wins removal semantics: in the rare case a removal in this
+        session races with an unrelated add from another session for the same
+        node, the node can be re-added by this merge. That tradeoff is safer
+        than the data loss this is fixing.
+        """
+        fresh_nodes = self._entry.options.get(CONF_NODES) or self._entry.data.get(
+            CONF_NODES, []
+        )
+        known_ids = {
+            str(node.get(CONF_NODE_ID))
+            for node in self._options.get(CONF_NODES, [])
+            if node.get(CONF_NODE_ID)
+        }
+        for node in fresh_nodes:
+            node_id = str(node.get(CONF_NODE_ID, ""))
+            if node_id and node_id not in known_ids:
+                self._options[CONF_NODES].append(node)
+                known_ids.add(node_id)
+
     async def _persist_options(self) -> None:
         """Persist options immediately and reload entry so entities appear at once."""
+        self._merge_concurrent_nodes()
         self.hass.config_entries.async_update_entry(self._entry, options=self._options)
         await self._cleanup_orphan_entity_registry_entries()
         await self.hass.config_entries.async_reload(self._entry.entry_id)

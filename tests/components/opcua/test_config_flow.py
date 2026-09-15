@@ -302,6 +302,30 @@ async def test_options_add_button_and_scene_parse_scalar_payloads(mock_hass, moc
 
 
 @pytest.mark.asyncio
+async def test_concurrent_options_flow_sessions_do_not_clobber_each_other(
+    mock_hass, mock_config_entry
+) -> None:
+    """Regression test: two separate options-flow sessions (e.g. two visits to
+    the options UI without reloading in between) must not let the later one's
+    save silently discard nodes the earlier one already persisted."""
+    session_a = OpcUaOptionsFlow(mock_config_entry)
+    session_a.hass = mock_hass
+    session_b = OpcUaOptionsFlow(mock_config_entry)
+    session_b.hass = mock_hass
+
+    await session_a.async_step_add_switch(
+        {CONF_NODE_NAME: "Boiler", CONF_NODE_ID: "ns=4;i=18"}
+    )
+
+    await session_b.async_step_add_switch(
+        {CONF_NODE_NAME: "Heatpump", CONF_NODE_ID: "ns=4;i=10"}
+    )
+
+    node_ids = {node[CONF_NODE_ID] for node in mock_config_entry.options[CONF_NODES]}
+    assert node_ids == {"ns=4;i=18", "ns=4;i=10"}
+
+
+@pytest.mark.asyncio
 async def test_options_add_select_splits_csv_options(mock_hass, mock_config_entry) -> None:
     flow = OpcUaOptionsFlow(mock_config_entry)
     flow.hass = mock_hass

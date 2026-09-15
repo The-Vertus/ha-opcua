@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.59
+- Fixed a data-loss bug in `OpcUaOptionsFlow` (`config_flow.py`) where opening the options/configure UI in two
+  separate visits (e.g. adding boiler nodes one day, heatpump nodes another, without a full reload between)
+  could silently discard nodes added by the earlier visit: each session snapshots `entry.options` once at
+  open time and does a full overwrite on every save, so the later save's stale snapshot would win and drop
+  everything it didn't know about. `_persist_options()` now merges in any nodes present in the live
+  `entry.options`/`entry.data` (by `node_id`) before writing, so a concurrent/earlier session's additions
+  survive. Added a regression test
+  (`test_concurrent_options_flow_sessions_do_not_clobber_each_other`) covering this exact scenario.
+
 ## 1.0.58
 - Fixed writes failing against strict OPC UA servers (e.g. Siemens S7-1200/1500) with
   `BadWriteNotSupported: The server does not support writing the combination of value, status and
