@@ -684,6 +684,10 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                 await manager.ensure_connected()
                 await manager.disconnect()
             except Exception:
+                _LOGGER.exception(
+                    "OPC UA reconnect validation failed for %s",
+                    endpoint,
+                )
                 errors["base"] = "cannot_connect"
 
             if not errors:
@@ -793,6 +797,10 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                 await manager.ensure_connected()
                 await manager.disconnect()
             except Exception:
+                _LOGGER.exception(
+                    "OPC UA reconnect validation failed for %s",
+                    endpoint,
+                )
                 errors["base"] = "cannot_connect"
 
             if not errors:

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.56
+- Bumped the pinned `asyncua` dependency from `1.2b2` to `2.0.1`. The beta release had a bug where every
+  individual OPC UA service request (including `CreateSessionRequest`) was capped at a hardcoded 1-second
+  response-wait timeout internally, regardless of the `timeout` passed to `Client(...)` — so the higher
+  `DEFAULT_TIMEOUT`/configurable timeout this integration already sets never actually applied to session
+  creation. This caused connections to real PLCs that take longer than ~1s to answer `CreateSessionRequest`
+  (e.g. Siemens S7-1200/1500 doing RSA work under `Basic256Sha256_SignAndEncrypt`) to fail with a generic
+  `Exception: Unhandled exception while sending request to OPC UA server` wrapping an `asyncio.TimeoutError`,
+  even though the server never actually rejected the session. Fixed upstream in asyncua 2.0.1
+  ("Fix default request timeout to be the Client.timeout, not 1").
+- `async_step_reauth_confirm` and `async_step_reconfigure` in `config_flow.py` previously swallowed the
+  real connection exception (bare `except Exception:` with no logging), showing only a generic
+  "Failed to connect" in the UI with nothing in the logs. Both now log the full exception via
+  `_LOGGER.exception(...)` so the real cause (including chained causes) is visible in Home Assistant's log.
+
 ## 1.0.55
 - Fixed `BadCertificateUriInvalid` rejections from strict OPC UA servers (Siemens/Beckhoff/CODESYS-class PLC stacks)
   when using `Basic256Sha256_Sign`/`Basic256Sha256_SignAndEncrypt`: the client now explicitly announces
