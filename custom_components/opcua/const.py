@@ -57,6 +57,7 @@ CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 
 CONF_VALIDATE_ON_SAVE = "validate_on_save"
+CONF_TIMEOUT = "timeout"
 
 
 # Security settings (for non-None policies)
@@ -210,6 +211,14 @@ SECURITY_POLICY_BASIC256SHA256_SIGN_ENCRYPT = "Basic256Sha256_SignAndEncrypt"
 
 DEFAULT_SECURITY_POLICY = SECURITY_POLICY_NONE
 DEFAULT_VALIDATE_ON_SAVE = False
+
+# asyncua's own Client default (4s) is too short for PLCs whose OPC UA
+# stack needs several seconds of RSA work to open a secure channel (e.g.
+# Siemens S7-1200, observed taking 10-20s+ on first handshake). Default
+# well above that, and cap configurability at a safe ceiling.
+DEFAULT_TIMEOUT = 20
+MIN_TIMEOUT = 4
+MAX_TIMEOUT = 30
 
 DEFAULT_NOTIFY_ENABLED = True
 DEFAULT_NOTIFY_SERVICE = "persistent_notification.create"

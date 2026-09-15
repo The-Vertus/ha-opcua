@@ -27,12 +27,16 @@ from .const import (
     CONF_NOTIFY_TITLE_PREFIX,
     CONF_SECURITY_POLICY,
     CONF_SERVER_CERT_PATH,
+    CONF_TIMEOUT,
     DEFAULT_NOTIFY_ENABLED,
     DEFAULT_NOTIFY_KEYWORDS,
     DEFAULT_NOTIFY_SERVICE,
     DEFAULT_NOTIFY_TITLE_PREFIX,
     DEFAULT_SECURITY_POLICY,
+    DEFAULT_TIMEOUT,
     DOMAIN,
+    MAX_TIMEOUT,
+    MIN_TIMEOUT,
     PLATFORMS,
     SECURITY_POLICIES,
     SECURITY_POLICY_NONE,
@@ -64,6 +68,9 @@ _YAML_ENTRY_SCHEMA = vol.Schema(
         vol.Optional(CONF_CLIENT_KEY_PATH): str,
         vol.Optional(CONF_SERVER_CERT_PATH): str,
         vol.Optional(CONF_CLIENT_KEY_PASSWORD): str,
+        vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): vol.All(
+            vol.Coerce(float), vol.Range(min=MIN_TIMEOUT, max=MAX_TIMEOUT)
+        ),
         vol.Optional(CONF_NOTIFY_ENABLED, default=DEFAULT_NOTIFY_ENABLED): bool,
         vol.Optional(CONF_NOTIFY_SERVICE, default=DEFAULT_NOTIFY_SERVICE): str,
         vol.Optional(
@@ -145,6 +152,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpcUaConfigEntry) -> boo
     client_key_path: str | None = entry.data.get(CONF_CLIENT_KEY_PATH)
     server_cert_path: str | None = entry.data.get(CONF_SERVER_CERT_PATH)
     client_key_password: str | None = entry.data.get(CONF_CLIENT_KEY_PASSWORD)
+    timeout: float = float(entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT))
 
     nodes: list[dict] = entry.options.get(CONF_NODES, entry.data.get(CONF_NODES, []))
 
@@ -183,6 +191,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpcUaConfigEntry) -> boo
         client_key_path=client_key_path,
         server_cert_path=server_cert_path,
         client_key_password=client_key_password,
+        timeout=timeout,
     )
 
     coordinator = OpcUaCoordinator(

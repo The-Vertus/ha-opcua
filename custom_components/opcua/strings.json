@@ -8,7 +8,8 @@
           "title": "Name",
           "endpoint": "Endpoint URL",
           "security_policy": "Security policy",
-          "validate_on_save": "Validate connection before save"
+          "validate_on_save": "Validate connection before save",
+          "timeout": "Connection timeout (seconds, raise this for PLCs with slow secure-channel handshakes, e.g. Siemens S7-1200)"
         }
       },
       "user_auth": {
@@ -38,7 +39,8 @@
         "description": "Found {name} at {endpoint}. Choose a security policy to continue.",
         "data": {
           "security_policy": "Security policy",
-          "validate_on_save": "Validate connection before save"
+          "validate_on_save": "Validate connection before save",
+          "timeout": "Connection timeout (seconds, raise this for PLCs with slow secure-channel handshakes, e.g. Siemens S7-1200)"
         }
       },
       "zeroconf_auth": {

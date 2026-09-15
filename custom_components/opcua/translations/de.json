@@ -8,7 +8,8 @@
           "title": "Name",
           "endpoint": "Endpoint-URL",
           "security_policy": "Sicherheitsrichtlinie",
-          "validate_on_save": "Verbindung vor dem Speichern prüfen"
+          "validate_on_save": "Verbindung vor dem Speichern prüfen",
+          "timeout": "Verbindungs-Timeout (Sekunden, bei SPS mit langsamem Secure-Channel-Handshake wie z. B. Siemens S7-1200 erhöhen)"
         }
       },
       "user_auth": {
@@ -38,7 +39,8 @@
         "description": "{name} unter {endpoint} gefunden. Wähle eine Sicherheitsrichtlinie, um fortzufahren.",
         "data": {
           "security_policy": "Sicherheitsrichtlinie",
-          "validate_on_save": "Verbindung vor dem Speichern prüfen"
+          "validate_on_save": "Verbindung vor dem Speichern prüfen",
+          "timeout": "Verbindungs-Timeout (Sekunden, bei SPS mit langsamem Secure-Channel-Handshake wie z. B. Siemens S7-1200 erhöhen)"
         }
       },
       "zeroconf_auth": {

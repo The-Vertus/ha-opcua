@@ -9,6 +9,7 @@ from typing import Any
 from asyncua import Client, ua
 
 from .const import (
+    DEFAULT_TIMEOUT,
     SECURITY_POLICY_BASIC256SHA256_SIGN,
     SECURITY_POLICY_BASIC256SHA256_SIGN_ENCRYPT,
     SECURITY_POLICY_NONE,
@@ -31,6 +32,7 @@ class OpcUaClientManager:
         client_key_path: str | None = None,
         server_cert_path: str | None = None,
         client_key_password: str | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
         self.endpoint = endpoint
         self.security_policy = security_policy
@@ -40,6 +42,7 @@ class OpcUaClientManager:
         self.client_key_path = client_key_path
         self.server_cert_path = server_cert_path
         self.client_key_password = client_key_password
+        self.timeout = timeout
 
         self._client: Client | None = None
         self._subscription = None
@@ -56,7 +59,7 @@ class OpcUaClientManager:
             if self._client is not None:
                 return
 
-            client = Client(self.endpoint)
+            client = Client(self.endpoint, timeout=self.timeout)
             sec_retry_base: str | None = None
 
             if self.security_policy == SECURITY_POLICY_NONE:
@@ -132,7 +135,7 @@ class OpcUaClientManager:
                     except Exception:
                         pass
 
-                    retry_client = Client(self.endpoint)
+                    retry_client = Client(self.endpoint, timeout=self.timeout)
                     await retry_client.set_security_string(sec_retry_base)
                     if self.username:
                         retry_client.set_user(self.username)

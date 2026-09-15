@@ -96,6 +96,7 @@ from .const import (
     CONF_SELECT_OPTIONS,
     CONF_SERVER_CERT_PATH,
     CONF_TEXT_MAX,
+    CONF_TIMEOUT,
     CONF_VALIDATE_ON_SAVE,
     CONF_VALVE_CLOSE_NODE_ID,
     CONF_VALVE_INVERT_POSITION,
@@ -123,11 +124,14 @@ from .const import (
     DEFAULT_NUMBER_STEP,
     DEFAULT_RGB_SCALE,
     DEFAULT_SECURITY_POLICY,
+    DEFAULT_TIMEOUT,
     DEFAULT_TITLE,
     DEFAULT_VALIDATE_ON_SAVE,
     DEFAULT_WHITE_SCALE,
     DEFAULT_XY_SCALE,
     DOMAIN,
+    MAX_TIMEOUT,
+    MIN_TIMEOUT,
     NODE_KIND_BINARY_SENSOR,
     NODE_KIND_BUTTON,
     NODE_KIND_CLIMATE,
@@ -254,6 +258,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
             client_key_path=pending.get(CONF_CLIENT_KEY_PATH) or None,
             server_cert_path=pending.get(CONF_SERVER_CERT_PATH) or None,
             client_key_password=pending.get(CONF_CLIENT_KEY_PASSWORD) or None,
+            timeout=float(pending.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)),
         )
         await manager.ensure_connected()
         await manager.disconnect()
@@ -329,10 +334,12 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
             validate_on_save = bool(
                 user_input.get(CONF_VALIDATE_ON_SAVE, DEFAULT_VALIDATE_ON_SAVE)
             )
+            timeout = float(user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT))
             self._pending_zeroconf_data = {
                 CONF_ENDPOINT: endpoint,
                 CONF_SECURITY_POLICY: security_policy,
                 CONF_VALIDATE_ON_SAVE: validate_on_save,
+                CONF_TIMEOUT: timeout,
             }
             if security_policy == SECURITY_POLICY_NONE:
                 return await self.async_step_zeroconf_notifications()
@@ -351,6 +358,14 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_VALIDATE_ON_SAVE, default=DEFAULT_VALIDATE_ON_SAVE
                 ): BooleanSelector(),
+                vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_TIMEOUT,
+                        max=MAX_TIMEOUT,
+                        step=1,
+                        unit_of_measurement="s",
+                    )
+                ),
             }
         )
 
@@ -446,6 +461,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
             validate_on_save = bool(
                 user_input.get(CONF_VALIDATE_ON_SAVE, DEFAULT_VALIDATE_ON_SAVE)
             )
+            timeout = float(user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT))
 
             if not endpoint:
                 errors[CONF_ENDPOINT] = "required"
@@ -463,6 +479,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_ENDPOINT: endpoint,
                     CONF_SECURITY_POLICY: security_policy,
                     CONF_VALIDATE_ON_SAVE: validate_on_save,
+                    CONF_TIMEOUT: timeout,
                 }
                 if security_policy == SECURITY_POLICY_NONE:
                     return await self.async_step_user_notifications()
@@ -485,6 +502,14 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_VALIDATE_ON_SAVE, default=DEFAULT_VALIDATE_ON_SAVE
                 ): BooleanSelector(),
+                vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_TIMEOUT,
+                        max=MAX_TIMEOUT,
+                        step=1,
+                        unit_of_measurement="s",
+                    )
+                ),
             }
         )
 
@@ -642,6 +667,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                 user_input.get(CONF_SERVER_CERT_PATH) or ""
             ).strip() or None
             client_key_password = user_input.get(CONF_CLIENT_KEY_PASSWORD) or None
+            timeout = float(user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT))
 
             try:
                 manager = OpcUaClientManager(
@@ -653,6 +679,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                     client_key_path=client_key_path,
                     server_cert_path=server_cert_path,
                     client_key_password=client_key_password,
+                    timeout=timeout,
                 )
                 await manager.ensure_connected()
                 await manager.disconnect()
@@ -670,6 +697,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_CLIENT_KEY_PATH: client_key_path,
                         CONF_SERVER_CERT_PATH: server_cert_path,
                         CONF_CLIENT_KEY_PASSWORD: client_key_password,
+                        CONF_TIMEOUT: timeout,
                     },
                 )
 
@@ -709,6 +737,17 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_CLIENT_KEY_PASSWORD,
                     default=defaults.get(CONF_CLIENT_KEY_PASSWORD) or "",
                 ): TextSelector(TextSelectorConfig(type="password")),
+                vol.Optional(
+                    CONF_TIMEOUT,
+                    default=defaults.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_TIMEOUT,
+                        max=MAX_TIMEOUT,
+                        step=1,
+                        unit_of_measurement="s",
+                    )
+                ),
             }
         )
         return self.async_show_form(
@@ -738,6 +777,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                 user_input.get(CONF_SERVER_CERT_PATH) or ""
             ).strip() or None
             client_key_password = user_input.get(CONF_CLIENT_KEY_PASSWORD) or None
+            timeout = float(user_input.get(CONF_TIMEOUT, DEFAULT_TIMEOUT))
             try:
                 manager = OpcUaClientManager(
                     endpoint=endpoint,
@@ -748,6 +788,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                     client_key_path=client_key_path,
                     server_cert_path=server_cert_path,
                     client_key_password=client_key_password,
+                    timeout=timeout,
                 )
                 await manager.ensure_connected()
                 await manager.disconnect()
@@ -766,6 +807,7 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_CLIENT_KEY_PATH: client_key_path,
                         CONF_SERVER_CERT_PATH: server_cert_path,
                         CONF_CLIENT_KEY_PASSWORD: client_key_password,
+                        CONF_TIMEOUT: timeout,
                     },
                 )
 
@@ -807,6 +849,17 @@ class OpcUaConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_CLIENT_KEY_PASSWORD,
                     default=defaults.get(CONF_CLIENT_KEY_PASSWORD) or "",
                 ): TextSelector(TextSelectorConfig(type="password")),
+                vol.Optional(
+                    CONF_TIMEOUT,
+                    default=defaults.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_TIMEOUT,
+                        max=MAX_TIMEOUT,
+                        step=1,
+                        unit_of_measurement="s",
+                    )
+                ),
             }
         )
         return self.async_show_form(
@@ -2339,6 +2392,7 @@ class OpcUaOptionsFlow(OptionsFlow):
                 client_key_path=self._entry.data.get(CONF_CLIENT_KEY_PATH),
                 server_cert_path=self._entry.data.get(CONF_SERVER_CERT_PATH),
                 client_key_password=self._entry.data.get(CONF_CLIENT_KEY_PASSWORD),
+                timeout=float(self._entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)),
             )
             try:
                 browsed = await manager.browse_nodes(
@@ -2639,6 +2693,7 @@ class OpcUaOptionsFlow(OptionsFlow):
                 client_key_path=self._entry.data.get(CONF_CLIENT_KEY_PATH),
                 server_cert_path=self._entry.data.get(CONF_SERVER_CERT_PATH),
                 client_key_password=self._entry.data.get(CONF_CLIENT_KEY_PASSWORD),
+                timeout=float(self._entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)),
             )
             try:
                 self._browse_cache = await manager.browse_nodes(
