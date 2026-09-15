@@ -247,7 +247,13 @@ class OpcUaClientManager:
                 assert self._client is not None
 
                 node = self._client.get_node(node_id)
-                await node.write_value(value)
+                # asyncua's Node.write_value() unconditionally stamps a
+                # SourceTimestamp on the outgoing DataValue. Many industrial
+                # OPC UA servers (Siemens S7-1200/1500 included) reject a
+                # client-supplied SourceTimestamp on a Value write with
+                # BadWriteNotSupported. Build a bare DataValue (value only)
+                # to avoid that.
+                await node.write_value(ua.DataValue(ua.Variant(value)))
                 return
             except Exception as err:
                 _LOGGER.warning(

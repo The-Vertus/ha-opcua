@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.58
+- Fixed writes failing against strict OPC UA servers (e.g. Siemens S7-1200/1500) with
+  `BadWriteNotSupported: The server does not support writing the combination of value, status and
+  timestamps provided`. Cause: asyncua's `Node.write_value()` always stamps a `SourceTimestamp` on the
+  outgoing `DataValue`; many PLCs manage timestamps themselves and reject a client-supplied one on a
+  Value write. `OpcUaClientManager.write_node()` now builds a bare `ua.DataValue(ua.Variant(value))`
+  (value only, no timestamp) before writing.
+
 ## 1.0.57
 - Enabled asyncua's built-in `auto_reconnect` watchdog on the client (available now that the dependency is on
   2.0.1). Previously, if the PLC dropped the OPC UA session (e.g. `BadSessionIdInvalid` during the background
