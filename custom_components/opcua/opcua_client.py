@@ -55,13 +55,22 @@ class OpcUaClientManager:
         ) = None
         self._lock = asyncio.Lock()
 
+    async def _on_connection_lost(self, err: Exception) -> None:
+        """Log asyncua's own auto-reconnect supervisor kicking in (informational)."""
+        _LOGGER.warning(
+            "OPC UA connection to %s was lost, auto-reconnect supervisor is recovering it: %s",
+            self.endpoint,
+            err,
+        )
+
     async def ensure_connected(self) -> None:
         async with self._lock:
             if self._client is not None:
                 return
 
-            client = Client(self.endpoint, timeout=self.timeout)
+            client = Client(self.endpoint, timeout=self.timeout, auto_reconnect=True)
             client.application_uri = APPLICATION_URI
+            client.connection_lost_callback = self._on_connection_lost
             sec_retry_base: str | None = None
 
             if self.security_policy == SECURITY_POLICY_NONE:
@@ -137,8 +146,9 @@ class OpcUaClientManager:
                     except Exception:
                         pass
 
-                    retry_client = Client(self.endpoint, timeout=self.timeout)
+                    retry_client = Client(self.endpoint, timeout=self.timeout, auto_reconnect=True)
                     retry_client.application_uri = APPLICATION_URI
+                    retry_client.connection_lost_callback = self._on_connection_lost
                     await retry_client.set_security_string(sec_retry_base)
                     if self.username:
                         retry_client.set_user(self.username)

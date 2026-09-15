@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.57
+- Enabled asyncua's built-in `auto_reconnect` watchdog on the client (available now that the dependency is on
+  2.0.1). Previously, if the PLC dropped the OPC UA session (e.g. `BadSessionIdInvalid` during the background
+  publish loop), nothing detected or recovered it: the coordinator has no `update_interval` (it's push-driven
+  via the subscription), so there was no periodic poll to trigger this integration's own reconnect-retry logic,
+  and entities would go stale indefinitely until a manual reload/restart. The library's watchdog now probes
+  connection health, reconnects with backoff, and restores existing subscriptions automatically on session loss.
+  A new `connection_lost_callback` logs a warning when this happens so it's visible instead of silent.
+
 ## 1.0.56
 - Bumped the pinned `asyncua` dependency from `1.2b2` to `2.0.1`. The beta release had a bug where every
   individual OPC UA service request (including `CreateSessionRequest`) was capped at a hardcoded 1-second

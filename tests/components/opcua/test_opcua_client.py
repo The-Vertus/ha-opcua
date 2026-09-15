@@ -43,9 +43,13 @@ class _FakeSubscription:
 class _FakeClient:
     instances = []
 
-    def __init__(self, endpoint: str, timeout: float = 4) -> None:
+    def __init__(
+        self, endpoint: str, timeout: float = 4, auto_reconnect: bool = False
+    ) -> None:
         self.endpoint = endpoint
         self.timeout = timeout
+        self.auto_reconnect = auto_reconnect
+        self.connection_lost_callback = None
         self.security = None
         self.username = None
         self.password = None
