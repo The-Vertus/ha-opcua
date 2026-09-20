@@ -1,6 +1,0 @@
-from server_all_entities import main
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(main())

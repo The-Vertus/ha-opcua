@@ -1,2 +1,0 @@
-asyncua==1.1.6
-zeroconf==0.132.2
