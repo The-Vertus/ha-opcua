@@ -468,11 +468,16 @@ def _install_asyncua_stubs() -> None:
 
     class _DummyClient:
         def __init__(
-            self, endpoint: str, timeout: float = 4, auto_reconnect: bool = False
+            self,
+            endpoint: str,
+            timeout: float = 4,
+            auto_reconnect: bool = False,
+            watchdog_intervall: float = 1.0,
         ) -> None:
             self.endpoint = endpoint
             self.timeout = timeout
             self.auto_reconnect = auto_reconnect
+            self.watchdog_intervall = watchdog_intervall
             self.connection_lost_callback = None
             self.security = None
             self.username = None

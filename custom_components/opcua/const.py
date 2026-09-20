@@ -230,6 +230,15 @@ DEFAULT_TIMEOUT = 20
 MIN_TIMEOUT = 4
 MAX_TIMEOUT = 30
 
+# asyncua's connection supervisor probes health by reading the server state with
+# a timeout of min(session_timeout / 2, watchdog_intervall), and watchdog_intervall
+# defaults to 1.0s. The same S7-1200 that needs ~7s to open a secure channel is
+# just as slow answering while it renews one, so the default 1s probe reports a
+# perfectly healthy PLC as "connection lost" and the client is then stuck
+# disconnected. The session timeout this PLC grants is 30s, which caps the
+# effective probe timeout at 15s.
+WATCHDOG_INTERVAL = 15.0
+
 # Periodic coordinator poll, independent of the OPC UA subscription's push
 # updates. Exists purely as a self-heal backstop: if the server invalidates
 # the secure channel/session outright, nothing else notices (the subscription

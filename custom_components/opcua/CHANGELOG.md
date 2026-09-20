@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.62
+- Fixed the client being declared "connection lost" and staying dead until a manual restart, seen live on
+  2026-09-20 (`Supervisor detected connection issue: TimeoutError()` during a channel renewal, then
+  `client is disconnected` on every request and a publish-loop crash every second). Two causes, both fixed:
+  - asyncua's connection supervisor probes health with a timeout of `min(session_timeout / 2,
+    watchdog_intervall)`, and `watchdog_intervall` defaults to 1.0 s. This S7-1200 needs ~6-7 s whenever it
+    does RSA work (channel renewal, connect), so a healthy PLC failed the 1 s probe. Clients are now created
+    with `watchdog_intervall=WATCHDOG_INTERVAL` (15 s, the cap the PLC's 30 s session timeout allows).
+  - Our own recovery never fired. The `connection_lost_callback` only logged "will rebuild on next
+    use/poll", but nothing rebuilt: the health-check `read_nodes()` catches per-node errors and returned a
+    dict of `None`s, so the log said "Health-check poll ... succeeded (6 nodes)" while all 6 reads failed
+    with `client is disconnected`. Now the callback flags the specific client for rebuild (a late callback from
+    an already-replaced client is ignored), `ensure_connected()` tears it down and reconnects, and
+    `read_nodes()` raises when every node read fails with a link-level error (connection/timeout errors and
+    session/secure-channel status codes) so the existing retry rebuilds the client. A single bad node still
+    just yields `None`.
+- The lost-connection warning now includes the exception's repr (`TimeoutError()` used to print as an empty
+  string).
+
 ## 1.0.61
 - Found the actual root cause behind the recurring publish-loop crash-spam (`1.0.60` only mitigated the
   symptom): per OPC UA Part 4 §5.5.2.1, a client must proactively renew its secure channel's security token

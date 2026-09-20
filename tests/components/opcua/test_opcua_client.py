@@ -44,11 +44,16 @@ class _FakeClient:
     instances = []
 
     def __init__(
-        self, endpoint: str, timeout: float = 4, auto_reconnect: bool = False
+        self,
+        endpoint: str,
+        timeout: float = 4,
+        auto_reconnect: bool = False,
+        watchdog_intervall: float = 1.0,
     ) -> None:
         self.endpoint = endpoint
         self.timeout = timeout
         self.auto_reconnect = auto_reconnect
+        self.watchdog_intervall = watchdog_intervall
         self.connection_lost_callback = None
         self.security = None
         self.username = None
@@ -163,6 +168,77 @@ async def test_ensure_connected_rebuilds_when_channel_renewal_task_died() -> Non
 
     assert second_client is not first_client
     assert first_client.disconnect_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_clients_are_built_with_relaxed_watchdog_interval() -> None:
+    """asyncua's default 1s supervisor probe timeout false-alarms on a slow PLC."""
+    from custom_components.opcua.const import WATCHDOG_INTERVAL
+
+    manager = OpcUaClientManager(endpoint="opc.tcp://127.0.0.1:4840", security_policy="None", username=None, password=None)
+    await manager.ensure_connected()
+    assert _FakeClient.instances[-1].watchdog_intervall == WATCHDOG_INTERVAL
+    assert WATCHDOG_INTERVAL > 1.0
+
+
+@pytest.mark.asyncio
+async def test_connection_lost_callback_makes_next_ensure_connected_rebuild() -> None:
+    """The watchdog marks a client disconnected for good; the callback must
+    flag it so the next poll rebuilds instead of only logging."""
+    manager = OpcUaClientManager(endpoint="opc.tcp://127.0.0.1:4840", security_policy="None", username=None, password=None)
+    await manager.ensure_connected()
+    first_client = _FakeClient.instances[-1]
+
+    await first_client.connection_lost_callback(TimeoutError())
+    await manager.ensure_connected()
+
+    second_client = _FakeClient.instances[-1]
+    assert second_client is not first_client
+    assert first_client.disconnect_calls == 1
+    await manager.ensure_connected()
+    assert _FakeClient.instances[-1] is second_client
+
+
+@pytest.mark.asyncio
+async def test_connection_lost_from_superseded_client_is_ignored() -> None:
+    manager = OpcUaClientManager(endpoint="opc.tcp://127.0.0.1:4840", security_policy="None", username=None, password=None)
+    await manager.ensure_connected()
+    first_client = _FakeClient.instances[-1]
+    await manager.disconnect()
+    await manager.ensure_connected()
+    second_client = _FakeClient.instances[-1]
+
+    await first_client.connection_lost_callback(TimeoutError())
+    await manager.ensure_connected()
+
+    assert _FakeClient.instances[-1] is second_client
+    assert second_client.disconnect_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_read_nodes_rebuilds_when_every_read_fails_with_link_error() -> None:
+    manager = OpcUaClientManager(endpoint="opc.tcp://127.0.0.1:4840", security_policy="None", username=None, password=None)
+    await manager.ensure_connected()
+    first_client = _FakeClient.instances[-1]
+    first_client.values = {"ns=2;s=Temp": ConnectionError("client is disconnected")}
+
+    result = await manager.read_nodes(["ns=2;s=Temp"])
+
+    assert result == {"ns=2;s=Temp": 21.0}
+    assert _FakeClient.instances[-1] is not first_client
+
+
+@pytest.mark.asyncio
+async def test_read_nodes_keeps_none_for_bad_node_without_reconnecting() -> None:
+    manager = OpcUaClientManager(endpoint="opc.tcp://127.0.0.1:4840", security_policy="None", username=None, password=None)
+    await manager.ensure_connected()
+    first_client = _FakeClient.instances[-1]
+    first_client.values = {"ns=2;s=Temp": RuntimeError("BadNodeIdUnknown")}
+
+    result = await manager.read_nodes(["ns=2;s=Temp"])
+
+    assert result == {"ns=2;s=Temp": None}
+    assert _FakeClient.instances[-1] is first_client
 
 
 @pytest.mark.asyncio

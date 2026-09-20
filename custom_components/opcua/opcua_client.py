@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any
 
 from asyncua import Client, ua
@@ -14,10 +15,33 @@ from .const import (
     SECURITY_POLICY_BASIC256SHA256_SIGN,
     SECURITY_POLICY_BASIC256SHA256_SIGN_ENCRYPT,
     SECURITY_POLICY_NONE,
+    WATCHDOG_INTERVAL,
 )
 from .opcua_subscription import establish_subscription
 
 _LOGGER = logging.getLogger(__name__)
+
+# Status-code exception class names that mean the session/channel itself is gone
+# (as opposed to a problem with one specific node).
+_LINK_ERROR_NAMES = frozenset(
+    {
+        "BadSessionIdInvalid",
+        "BadSessionClosed",
+        "BadSessionNotActivated",
+        "BadSecureChannelIdInvalid",
+        "BadSecureChannelClosed",
+        "BadTcpSecureChannelUnknown",
+        "BadConnectionClosed",
+        "BadNotConnected",
+    }
+)
+
+
+def _is_link_error(err: BaseException) -> bool:
+    """Whether err says the connection is dead rather than one node being bad."""
+    return isinstance(err, (ConnectionError, TimeoutError, OSError)) or (
+        type(err).__name__ in _LINK_ERROR_NAMES
+    )
 
 
 class OpcUaClientManager:
@@ -54,24 +78,37 @@ class OpcUaClientManager:
             Callable[[str, Any], Awaitable[None] | None] | None
         ) = None
         self._lock = asyncio.Lock()
+        self._lost_client: Client | None = None
+        self._lost_reason: str | None = None
 
-    async def _on_connection_lost(self, err: Exception) -> None:
-        """Log asyncua's watchdog detecting a lost connection (informational).
+    async def _on_connection_lost(self, lost_client: Client, err: Exception) -> None:
+        """Record that asyncua's watchdog declared this client's connection lost.
 
         auto_reconnect is intentionally left off (see ensure_connected): asyncua
         2.0.1's in-place reconnect races with the still-running subscription
         publish loop and, against a server that fully invalidates the secure
         channel/session, gets stuck retrying the same failure indefinitely
-        while the publish loop crash-loops once a second. We let the watchdog
-        just mark the client disconnected and rely on our own retry logic
-        (read_nodes/write_node/coordinator polling) to tear down and build a
-        brand-new Client from scratch, which is what actually recovers.
+        while the publish loop crash-loops once a second. Without it the
+        watchdog just marks the client disconnected for good, so this callback
+        flags it and ensure_connected() (called by every poll/read/write)
+        tears it down and builds a brand-new Client from scratch, which is what
+        actually recovers. The flag is tied to the specific client so a late
+        callback from an already-replaced client can't condemn its successor.
         """
+        reason = f"connection lost ({err!r})"
+        if self._client is not None and lost_client is not self._client:
+            _LOGGER.debug(
+                "Ignoring connection-lost report from a superseded OPC UA client: %s",
+                reason,
+            )
+            return
+        self._lost_client = lost_client
+        self._lost_reason = reason
         _LOGGER.warning(
-            "OPC UA connection to %s was lost: %s. Will rebuild the connection "
-            "on next use/poll.",
+            "OPC UA connection to %s was lost: %s. Rebuilding it on the next "
+            "health-check poll or use.",
             self.endpoint,
-            err,
+            reason,
         )
 
     def _channel_renewal_died(self) -> Exception | None:
@@ -101,21 +138,48 @@ class OpcUaClientManager:
         except asyncio.CancelledError:
             return None
 
+    def _rebuild_reason(self) -> str | None:
+        """Why the current client must be replaced, or None if it looks usable."""
+        if self._client is None:
+            return None
+        if self._lost_client is self._client and self._lost_reason is not None:
+            return self._lost_reason
+        renewal_err = self._channel_renewal_died()
+        if renewal_err is not None:
+            return f"secure-channel renewal stopped ({renewal_err!r})"
+        return None
+
+    def _new_client(self) -> Client:
+        # auto_reconnect deliberately NOT enabled here - see _on_connection_lost.
+        client = Client(
+            self.endpoint,
+            timeout=self.timeout,
+            watchdog_intervall=WATCHDOG_INTERVAL,
+        )
+        client.application_uri = APPLICATION_URI
+        client.connection_lost_callback = partial(self._on_connection_lost, client)
+        return client
+
     async def ensure_connected(self) -> None:
         async with self._lock:
             if self._client is not None:
-                dead_reason = self._channel_renewal_died()
-                if dead_reason is None:
+                reason = self._rebuild_reason()
+                if reason is None:
                     return
                 _LOGGER.warning(
-                    "OPC UA secure-channel renewal for %s has stopped (%s); "
-                    "rebuilding the connection now instead of waiting for the "
-                    "channel to expire.",
+                    "OPC UA connection to %s needs rebuilding: %s. Tearing it down "
+                    "and reconnecting from scratch.",
                     self.endpoint,
-                    dead_reason,
+                    reason,
                 )
                 stale_client = self._client
                 self._client = None
+                # The stale client's disconnect() deletes its subscriptions
+                # server-side; just drop our local references instead of making
+                # network calls over a dead channel.
+                self._subscription = None
+                self._subscription_handles = []
+                self._subscribed_node_ids = []
                 try:
                     await stale_client.disconnect()
                 except Exception:
@@ -123,10 +187,7 @@ class OpcUaClientManager:
                         "Error while disconnecting stale OPC UA client", exc_info=True
                     )
 
-            # auto_reconnect deliberately NOT enabled here - see _on_connection_lost.
-            client = Client(self.endpoint, timeout=self.timeout)
-            client.application_uri = APPLICATION_URI
-            client.connection_lost_callback = self._on_connection_lost
+            client = self._new_client()
             sec_retry_base: str | None = None
 
             if self.security_policy == SECURITY_POLICY_NONE:
@@ -202,9 +263,7 @@ class OpcUaClientManager:
                     except Exception:
                         pass
 
-                    retry_client = Client(self.endpoint, timeout=self.timeout)
-                    retry_client.application_uri = APPLICATION_URI
-                    retry_client.connection_lost_callback = self._on_connection_lost
+                    retry_client = self._new_client()
                     await retry_client.set_security_string(sec_retry_base)
                     if self.username:
                         retry_client.set_user(self.username)
@@ -216,6 +275,9 @@ class OpcUaClientManager:
                     raise
 
             self._client = client
+            if self._lost_client is not client:
+                self._lost_client = None
+                self._lost_reason = None
             if self._desired_subscription_node_ids and self._subscription_callback:
                 await self._establish_subscription(
                     self._desired_subscription_node_ids,
@@ -269,18 +331,31 @@ class OpcUaClientManager:
                 assert self._client is not None
 
                 result: dict[str, Any] = {}
+                link_failures = 0
+                last_link_err: BaseException | None = None
                 for node_id in node_ids:
                     try:
                         node = self._client.get_node(node_id)
                         result[node_id] = await node.read_value()
                     except Exception as node_err:
                         _LOGGER.debug(
-                            "Node read failed %s on %s: %s",
+                            "Node read failed %s on %s: %r",
                             node_id,
                             self.endpoint,
                             node_err,
                         )
                         result[node_id] = None
+                        if _is_link_error(node_err):
+                            link_failures += 1
+                            last_link_err = node_err
+                # Per-node tolerance is for one bad node, not a dead connection:
+                # if every read failed because the link itself is gone, report
+                # that so the retry below rebuilds the client, instead of
+                # returning a dict of Nones that looks like a successful poll.
+                if node_ids and link_failures == len(node_ids):
+                    raise ConnectionError(
+                        f"all {link_failures} node reads failed: {last_link_err!r}"
+                    )
                 return result
             except Exception as err:
                 _LOGGER.warning(
