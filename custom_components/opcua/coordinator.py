@@ -83,6 +83,11 @@ class OpcUaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return dict(initial)
 
             latest = await self.manager.read_nodes(self._subscribed_node_ids)
+            _LOGGER.debug(
+                "Health-check poll for %s succeeded (%d nodes)",
+                self.endpoint,
+                len(latest),
+            )
             combined = dict(self._last_values)
             combined.update(latest)
             self._last_values = combined

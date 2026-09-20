@@ -74,10 +74,54 @@ class OpcUaClientManager:
             err,
         )
 
+    def _channel_renewal_died(self) -> Exception | None:
+        """Detect asyncua's secure-channel renewal task having silently died.
+
+        Per OPC UA Part 4 5.5.2.1, a client must proactively renew its secure
+        channel's security token before it expires (asyncua does this via an
+        internal `_renew_channel_task`, independent of auto_reconnect). That
+        task's own error handling has no retry: if a single renewal attempt
+        ever raises (a transient network hiccup, the PLC being momentarily
+        busy, a timeout - nothing exotic), the task logs the exception and
+        exits for good. Nothing else notices. From then on the channel's
+        token just counts down to expiry with nothing renewing it; once it
+        expires the server rejects everything on that channel
+        (BadTcpSecureChannelUnknown), which is what previously cascaded into
+        the publish-loop crash-spam this integration used to only detect
+        after the fact via a plain read failure - which may never happen if
+        the read call doesn't get scheduled before something else (e.g. a
+        manual restart) intervenes. Checking the task's liveness here lets us
+        rebuild the connection proactively instead of waiting to be told.
+        """
+        task = getattr(self._client, "_renew_channel_task", None)
+        if task is None or not task.done():
+            return None
+        try:
+            return task.exception()
+        except asyncio.CancelledError:
+            return None
+
     async def ensure_connected(self) -> None:
         async with self._lock:
             if self._client is not None:
-                return
+                dead_reason = self._channel_renewal_died()
+                if dead_reason is None:
+                    return
+                _LOGGER.warning(
+                    "OPC UA secure-channel renewal for %s has stopped (%s); "
+                    "rebuilding the connection now instead of waiting for the "
+                    "channel to expire.",
+                    self.endpoint,
+                    dead_reason,
+                )
+                stale_client = self._client
+                self._client = None
+                try:
+                    await stale_client.disconnect()
+                except Exception:
+                    _LOGGER.debug(
+                        "Error while disconnecting stale OPC UA client", exc_info=True
+                    )
 
             # auto_reconnect deliberately NOT enabled here - see _on_connection_lost.
             client = Client(self.endpoint, timeout=self.timeout)

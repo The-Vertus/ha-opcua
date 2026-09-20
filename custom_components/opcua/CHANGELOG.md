@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.61
+- Found the actual root cause behind the recurring publish-loop crash-spam (`1.0.60` only mitigated the
+  symptom): per OPC UA Part 4 §5.5.2.1, a client must proactively renew its secure channel's security token
+  before it expires. asyncua implements this via an internal `_renew_channel_task`, independent of
+  `auto_reconnect` - but that task's error handling has no retry: if a single renewal attempt ever raises
+  (a transient network hiccup, the PLC being momentarily busy, a timeout - nothing exotic), the task logs
+  the exception and exits for good, silently. From then on the channel's token just counts down to expiry
+  with nothing renewing it; once it expires the server rejects everything on that channel
+  (`BadTcpSecureChannelUnknown`), cascading into the publish-loop crash-spam. This is invisible to a plain
+  read-based health check, since ordinary reads can keep succeeding right up until the token actually
+  expires.
+  - `opcua_client.py`: `ensure_connected()` now checks the renewal task's liveness on every call (so on
+    every health-check poll) via a new `_channel_renewal_died()` helper, and proactively tears down and
+    rebuilds the connection the moment the renewal task is found dead - instead of waiting for the channel
+    to actually expire and break everything.
+  - Added regression tests covering both the dead-renewal-task rebuild path and the healthy/absent-task
+    no-op path.
+- Improved logging visibility (debugging this class of issue was unnecessarily hard): the health-check poll
+  now logs a DEBUG-level line on every successful cycle, so it's possible to confirm it's actually running
+  instead of only seeing silence.
+
 ## 1.0.60
 - Fixed a sustained ~1/second log-spam/reconnect-failure loop (`asyncua.client.ua_session.UaSession`
   "Publish iteration crashed; retrying in 1s" / `ConnectionError: Connection is closed`, alongside

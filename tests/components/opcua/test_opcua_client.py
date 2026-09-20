@@ -132,6 +132,52 @@ async def test_read_failure_preserves_subscription_configuration_for_reconnect()
     assert second_client.subscribed == ["ns=2;s=Temp"]
 
 
+class _FakeDeadTask:
+    """Mimics an asyncio.Task that finished with an exception."""
+
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def done(self) -> bool:
+        return True
+
+    def exception(self) -> Exception:
+        return self._exc
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_rebuilds_when_channel_renewal_task_died() -> None:
+    """Regression test: asyncua's secure-channel renewal task can silently die
+    (no retry) after a single failed renewal attempt, per OPC UA Part 4
+    5.5.2.1. ensure_connected() must detect this via the task's liveness and
+    proactively rebuild the connection instead of only reacting to a later
+    read/write failure once the channel has actually expired."""
+    manager = OpcUaClientManager(endpoint="opc.tcp://127.0.0.1:4840", security_policy="None", username=None, password=None)
+
+    await manager.ensure_connected()
+    first_client = _FakeClient.instances[-1]
+    first_client._renew_channel_task = _FakeDeadTask(ConnectionError("renew failed"))
+
+    await manager.ensure_connected()
+    second_client = _FakeClient.instances[-1]
+
+    assert second_client is not first_client
+    assert first_client.disconnect_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_keeps_client_when_renewal_task_alive_or_absent() -> None:
+    manager = OpcUaClientManager(endpoint="opc.tcp://127.0.0.1:4840", security_policy="None", username=None, password=None)
+
+    await manager.ensure_connected()
+    first_client = _FakeClient.instances[-1]
+    assert getattr(first_client, "_renew_channel_task", None) is None
+
+    await manager.ensure_connected()
+    assert _FakeClient.instances[-1] is first_client
+    assert first_client.disconnect_calls == 0
+
+
 @pytest.mark.asyncio
 async def test_disconnect_clears_or_preserves_subscription_as_requested() -> None:
     manager = OpcUaClientManager(endpoint="opc.tcp://127.0.0.1:4840", security_policy="None", username=None, password=None)
