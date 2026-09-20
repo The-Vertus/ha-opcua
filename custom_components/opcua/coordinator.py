@@ -11,6 +11,7 @@ from .const import (
     CONF_NODE_KIND,
     CONF_NODE_NAME,
     EVENT_NOTIFICATION,
+    HEALTH_CHECK_INTERVAL,
 )
 from .opcua_client import OpcUaClientManager
 
@@ -46,7 +47,18 @@ class OpcUaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._notification_primed = False
         self._subscribed_node_ids: list[str] = []
 
-        super().__init__(hass, _LOGGER, name="opcua")
+        # Updates normally arrive via the OPC UA subscription's push callback
+        # (async_set_updated_data), not this poll. But nothing else periodically
+        # exercises the connection: if the server invalidates the session/secure
+        # channel outright (observed against a Siemens PLC), asyncua's internal
+        # subscription publish loop can end up crash-looping against the dead
+        # channel indefinitely without this coordinator ever noticing. This
+        # periodic poll calls into OpcUaClientManager.read_nodes(), whose
+        # existing failure path fully disconnects and rebuilds the client from
+        # scratch - the only thing that's been reliable at clearing that state.
+        super().__init__(
+            hass, _LOGGER, name="opcua", update_interval=HEALTH_CHECK_INTERVAL
+        )
 
     def _collect_node_ids(self) -> list[str]:
         node_ids: list[str] = []

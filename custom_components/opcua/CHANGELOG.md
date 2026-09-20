@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.60
+- Fixed a sustained ~1/second log-spam/reconnect-failure loop (`asyncua.client.ua_session.UaSession`
+  "Publish iteration crashed; retrying in 1s" / `ConnectionError: Connection is closed`, alongside
+  `asyncua.client.client` "Reconnect attempt failed: BadTcpSecureChannelUnknown(...); retrying in 30.0s"
+  repeating indefinitely) seen after the PLC invalidated the secure channel/session outright. Root cause:
+  asyncua 2.0.1's `auto_reconnect` supervisor (enabled in 1.0.57) tries to reactivate the existing session
+  in-place, uncoordinated with the still-running subscription publish loop, which keeps hammering the dead
+  channel every second regardless. Against a server that fully discards the old channel/session (as opposed
+  to a transient blip), this races indefinitely and never recovers on its own — only a full config-entry
+  reload (which builds a brand-new `Client` from scratch) cleared it.
+  - `opcua_client.py`: disabled `auto_reconnect` again. The watchdog still runs and calls
+    `connection_lost_callback` for visibility, but no longer attempts (and gets stuck failing) its own
+    in-place reactivation.
+  - `coordinator.py`/`const.py`: added a 30s `update_interval` (`HEALTH_CHECK_INTERVAL`) so the coordinator
+    now polls independently of the push subscription. This exercises `OpcUaClientManager.read_nodes()`'s
+    existing failure path, which fully disconnects (tearing down the stuck publish loop) and rebuilds the
+    `Client` from scratch — the same thing a manual reload does, just automatic and on a regular cadence.
+
 ## 1.0.59
 - Fixed a data-loss bug in `OpcUaOptionsFlow` (`config_flow.py`) where opening the options/configure UI in two
   separate visits (e.g. adding boiler nodes one day, heatpump nodes another, without a full reload between)

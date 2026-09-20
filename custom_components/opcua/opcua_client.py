@@ -56,9 +56,20 @@ class OpcUaClientManager:
         self._lock = asyncio.Lock()
 
     async def _on_connection_lost(self, err: Exception) -> None:
-        """Log asyncua's own auto-reconnect supervisor kicking in (informational)."""
+        """Log asyncua's watchdog detecting a lost connection (informational).
+
+        auto_reconnect is intentionally left off (see ensure_connected): asyncua
+        2.0.1's in-place reconnect races with the still-running subscription
+        publish loop and, against a server that fully invalidates the secure
+        channel/session, gets stuck retrying the same failure indefinitely
+        while the publish loop crash-loops once a second. We let the watchdog
+        just mark the client disconnected and rely on our own retry logic
+        (read_nodes/write_node/coordinator polling) to tear down and build a
+        brand-new Client from scratch, which is what actually recovers.
+        """
         _LOGGER.warning(
-            "OPC UA connection to %s was lost, auto-reconnect supervisor is recovering it: %s",
+            "OPC UA connection to %s was lost: %s. Will rebuild the connection "
+            "on next use/poll.",
             self.endpoint,
             err,
         )
@@ -68,7 +79,8 @@ class OpcUaClientManager:
             if self._client is not None:
                 return
 
-            client = Client(self.endpoint, timeout=self.timeout, auto_reconnect=True)
+            # auto_reconnect deliberately NOT enabled here - see _on_connection_lost.
+            client = Client(self.endpoint, timeout=self.timeout)
             client.application_uri = APPLICATION_URI
             client.connection_lost_callback = self._on_connection_lost
             sec_retry_base: str | None = None
@@ -146,7 +158,7 @@ class OpcUaClientManager:
                     except Exception:
                         pass
 
-                    retry_client = Client(self.endpoint, timeout=self.timeout, auto_reconnect=True)
+                    retry_client = Client(self.endpoint, timeout=self.timeout)
                     retry_client.application_uri = APPLICATION_URI
                     retry_client.connection_lost_callback = self._on_connection_lost
                     await retry_client.set_security_string(sec_retry_base)

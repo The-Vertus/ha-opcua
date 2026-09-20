@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 try:
     from homeassistant.const import Platform
 except Exception:  # pragma: no cover - fallback for standalone smoke/import tests
@@ -227,6 +229,14 @@ APPLICATION_URI = "urn:homeassistant:opcua-client"
 DEFAULT_TIMEOUT = 20
 MIN_TIMEOUT = 4
 MAX_TIMEOUT = 30
+
+# Periodic coordinator poll, independent of the OPC UA subscription's push
+# updates. Exists purely as a self-heal backstop: if the server invalidates
+# the secure channel/session outright, nothing else notices (the subscription
+# just goes silent), so this ensures OpcUaClientManager.read_nodes()'s
+# existing disconnect+rebuild-from-scratch retry logic actually gets
+# triggered on a regular cadence.
+HEALTH_CHECK_INTERVAL = timedelta(seconds=30)
 
 DEFAULT_NOTIFY_ENABLED = True
 DEFAULT_NOTIFY_SERVICE = "persistent_notification.create"
